@@ -57,12 +57,15 @@ RUN chown -R appuser:nodejs /app
 
 USER appuser
 
-# Expose port
-EXPOSE 3000
+# Default port (can be overridden by environment)
+ENV PORT=3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+# Expose common ports
+EXPOSE 3000 4000
+
+# Health check - uses shell to read PORT env variable
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
+  CMD sh -c 'wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1'
 
 # Start the application
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

@@ -40,12 +40,13 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1"]
       interval: 30s
-      timeout: 3s
-      retries: 3
+      timeout: 10s
+      start_period: 30s
+      retries: 5
 
 volumes:
   postgres_data:
