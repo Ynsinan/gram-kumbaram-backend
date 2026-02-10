@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String            @id @default(uuid())
+  email        String            @unique
+  name         String
+  googleId     String            @unique
+  createdAt    DateTime          @default(now())
+  transactions GoldTransaction[]
+
+  @@map("users")
+}
+
+enum TransactionType {
+  BUY
+  SELL
+}
+
+model GoldTransaction {
+  id              String          @id @default(uuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            TransactionType
+  goldType        String          // 'gram', 'ceyrek', 'yarim', 'cumhuriyet'
+  quantity        Float           // Always positive
+  pricePerUnit    Float           // Price at transaction time
+  transactionDate DateTime
+  createdAt       DateTime        @default(now())
+
+  @@index([userId])
+  @@index([goldType])
+  @@index([transactionDate])
+  @@map("gold_transactions")
+}

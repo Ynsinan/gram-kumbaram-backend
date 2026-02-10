@@ -1,0 +1,280 @@
+---
+description: Gold Portfolio Tracker Backend - Project specification, schema, API and business rules
+alwaysApply: true
+---
+
+# Gold Portfolio Tracker Backend – Project Specification
+
+Use this document as the single source of truth. Do not assume; verify against this spec.
+
+---
+
+## 1. Project Overview
+
+- **Type:** Backend REST API
+- **Runtime:** Node.js (v20+)
+- **Purpose:** Track physical gold investments (Buy & Sell) using real-time data and calculate profit/loss.
+
+**Core Flow:**
+1. User logs in via Google (OAuth) → receives JWT token.
+2. User records transactions: **BUY** or **SELL**.
+3. System validates that the user has enough gold to sell.
+4. System calculates **Net Portfolio** with FIFO cost basis.
+
+---
+
+## 2. Tech Stack
+
+| Layer        | Choice              |
+|-------------|---------------------|
+| Runtime     | Node.js 20+ LTS |
+| Language    | TypeScript (Strict Mode) |
+| Framework   | Express.js |
+| Database    | PostgreSQL 16 |
+| ORM         | Prisma |
+| API Docs    | Swagger (swagger-jsdoc + swagger-ui-express) |
+| Scraping    | Axios + Cheerio |
+| Auth        | Passport.js (Google OAuth) + JWT |
+| Validation  | Zod |
+| Deployment  | Docker (Dokploy ready) |
+
+---
+
+## 3. Database Schema (Prisma)
+
+### Model: `User`
+- `id`: UUID, Primary Key
+- `email`: String, Unique
+- `name`: String
+- `googleId`: String, Unique
+- `createdAt`: DateTime
+- `transactions`: GoldTransaction[] (relation)
+
+### Enum: `TransactionType`
+- `BUY`
+- `SELL`
+
+### Model: `GoldTransaction`
+- `id`: UUID, Primary Key
+- `userId`: UUID (Relation to User, cascade delete)
+- `type`: TransactionType (BUY or SELL)
+- `goldType`: String — **only**: `'gram'`, `'ceyrek'`, `'yarim'`, `'cumhuriyet'`
+- `quantity`: Float — **always positive**
+- `pricePerUnit`: Float — price at transaction time (TL)
+- `transactionDate`: DateTime
+- `createdAt`: DateTime
+
+---
+
+## 4. Gold Types & IDs
+
+| ID | Code | Display Name |
+|----|------|--------------|
+| 1 | `gram` | Gram Altın |
+| 2 | `ceyrek` | Çeyrek Altın |
+| 3 | `yarim` | Yarım Altın |
+| 4 | `cumhuriyet` | Cumhuriyet Altını |
+
+### GoldPrice Interface
+```typescript
+interface GoldPrice {
+  id: number;        // 1, 2, 3, or 4
+  name: string;      // Display name (Turkish)
+  buyPrice: number;  // Alış fiyatı (TL)
+  sellPrice: number; // Satış fiyatı (TL)
+}
+```
+
+---
+
+## 5. Price Data Sources
+
+**Primary:** `https://altin.in` (international number format: `5323.9200`)
+**Fallback:** `https://bigpara.hurriyet.com.tr/altin/` (Turkish format: `6.908,23`)
+
+- Cache duration: 60 seconds
+- Response includes `source` field indicating data origin
+- Proxy disabled for scraping (direct connection)
+
+---
+
+## 6. API Endpoints
+
+### A. Authentication (`/auth`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/auth/google` | Initiate Google OAuth |
+| GET | `/auth/google/callback` | OAuth callback, issues JWT |
+| GET | `/auth/me` | Get current user (requires Bearer token) |
+
+**JWT Payload:** `{ userId, email, name }`
+**Token Expiry:** 7 days
+
+### B. Gold Prices (`/api/prices`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/prices` | Get all gold prices |
+| GET | `/api/prices?refresh=true` | Force refresh (bypass cache) |
+| GET | `/api/prices/:goldType` | Get specific gold type price |
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "prices": {
+      "gram": { "id": 1, "name": "Gram Altın", "buyPrice": 7025, "sellPrice": 7085 },
+      "ceyrek": { "id": 2, "name": "Çeyrek Altın", "buyPrice": 11774, "sellPrice": 12014 },
+      "yarim": { "id": 3, "name": "Yarım Altın", "buyPrice": 23549, "sellPrice": 24029 },
+      "cumhuriyet": { "id": 4, "name": "Cumhuriyet Altını", "buyPrice": 48462, "sellPrice": 48952 }
+    },
+    "lastUpdated": "2026-02-09T18:45:30.974Z",
+    "source": "altin.in"
+  }
+}
+```
+
+### C. Transactions (`/api/transactions`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/transactions` | Create transaction (BUY/SELL) |
+| GET | `/api/transactions` | List all user transactions |
+| GET | `/api/transactions/holdings` | Get holdings summary |
+| GET | `/api/transactions/:id` | Get specific transaction |
+| DELETE | `/api/transactions/:id` | Delete transaction |
+
+**POST Body:**
+```json
+{
+  "type": "BUY" | "SELL",
+  "goldType": "gram" | "ceyrek" | "yarim" | "cumhuriyet",
+  "quantity": 10,
+  "pricePerUnit": 7000,
+  "date": "2026-02-09"
+}
+```
+
+**SELL Validation:** If `currentHoldings < quantity` → **400** `"Insufficient gold balance"`
+
+### D. Portfolio (`/api/portfolio`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/portfolio` | Get portfolio summary with P/L |
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalPortfolioValue": 71018.18,
+    "totalCost": 70000,
+    "totalUnrealizedProfitLoss": 1018.18,
+    "totalRealizedProfit": 0,
+    "assets": [
+      {
+        "goldType": "gram",
+        "netQuantity": 10,
+        "averageCost": 7000,
+        "totalCost": 70000,
+        "currentPrice": 7101.82,
+        "currentValue": 71018.18,
+        "unrealizedProfitLoss": 1018.18,
+        "realizedProfit": 0
+      }
+    ]
+  }
+}
+```
+
+**Cost Basis:** FIFO (First In, First Out)
+
+---
+
+## 7. Project Structure
+
+```
+physical-golden-wallet/
+├── prisma/
+│   └── schema.prisma
+├── src/
+│   ├── config/
+│   │   ├── database.ts      # Prisma client
+│   │   ├── env.ts           # Zod env validation
+│   │   ├── passport.ts      # Google OAuth strategy
+│   │   └── swagger.ts       # OpenAPI spec
+│   ├── middleware/
+│   │   └── auth.middleware.ts
+│   ├── routes/
+│   │   ├── auth.routes.ts
+│   │   ├── portfolio.routes.ts
+│   │   ├── prices.routes.ts
+│   │   └── transactions.routes.ts
+│   ├── services/
+│   │   ├── portfolio.service.ts
+│   │   ├── scraper.service.ts
+│   │   └── transaction.service.ts
+│   ├── types/
+│   │   └── index.ts
+│   ├── validators/
+│   │   └── transaction.validator.ts
+│   └── index.ts
+├── docker-compose.yml       # Production (app + postgres)
+├── docker-compose.dev.yml   # Dev (postgres only)
+├── Dockerfile               # Multi-stage production build
+├── .env                     # Environment variables
+└── package.json
+```
+
+---
+
+## 8. Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | JWT signing secret (min 10 chars) |
+| `GOOGLE_CLIENT_ID` | Yes | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth client secret |
+| `GOOGLE_CALLBACK_URL` | Yes | OAuth callback URL |
+| `PORT` | No | Server port (default: 3000) |
+| `NODE_ENV` | No | Environment (default: development) |
+| `FRONTEND_URL` | No | Frontend URL for CORS & redirects |
+
+---
+
+## 9. Development Commands
+
+```bash
+# Start PostgreSQL (Docker)
+docker compose -f docker-compose.dev.yml up -d
+
+# Generate Prisma client
+npm run prisma:generate
+
+# Run migrations
+npm run prisma:migrate
+
+# Start dev server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+---
+
+## 10. API Documentation
+
+- **Swagger UI:** `http://localhost:3000/api-docs`
+- **OpenAPI JSON:** `http://localhost:3000/api-docs.json`
+- **Health Check:** `http://localhost:3000/health`
+
+---
+
+## 11. Conventions
+
+- All API responses follow: `{ success: boolean, data?: T, error?: string, message?: string }`
+- Use Bearer token in `Authorization` header for protected routes
+- Validate `goldType` against `['gram', 'ceyrek', 'yarim', 'cumhuriyet']`
+- Keep `quantity` strictly positive for both BUY and SELL
+- Dates in ISO 8601 format or `YYYY-MM-DD`
