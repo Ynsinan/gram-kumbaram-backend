@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { createTransactionSchema } from '../validators/transaction.validator.js';
 import {
@@ -13,7 +13,7 @@ import type { AuthenticatedRequest } from '../types/index.js';
 const router = Router();
 
 // All routes require authentication
-router.use(authMiddleware);
+router.use(authMiddleware as any);
 
 /**
  * @swagger
@@ -66,9 +66,9 @@ router.use(authMiddleware);
  *       401:
  *         description: Unauthorized
  */
-router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = (req as AuthenticatedRequest).user!.id;
 
     // Validate input
     const validationResult = createTransactionSchema.safeParse(req.body);
@@ -132,9 +132,9 @@ router.post('/', async (req: AuthenticatedRequest, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = (req as AuthenticatedRequest).user!.id;
     const transactions = await getTransactions(userId);
 
     res.json({
@@ -165,9 +165,9 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/holdings', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/holdings', async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = (req as AuthenticatedRequest).user!.id;
     const holdings = await getHoldingsSummary(userId);
 
     res.json({
@@ -208,9 +208,9 @@ router.get('/holdings', async (req: AuthenticatedRequest, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = (req as AuthenticatedRequest).user!.id;
     const { id } = req.params;
 
     if (!id) {
@@ -273,9 +273,9 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = (req as AuthenticatedRequest).user!.id;
     const { id } = req.params;
 
     if (!id) {

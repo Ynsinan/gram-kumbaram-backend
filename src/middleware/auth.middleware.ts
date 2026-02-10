@@ -1,4 +1,4 @@
-import type { Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { prisma } from '../config/database.js';
@@ -16,8 +16,8 @@ export const verifyToken = (token: string): JWTPayload | null => {
   }
 };
 
-export const authMiddleware = async (
-  req: AuthenticatedRequest,
+export const authMiddleware: RequestHandler = async (
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -59,7 +59,7 @@ export const authMiddleware = async (
       return;
     }
 
-    req.user = user;
+    (req as AuthenticatedRequest).user = user;
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);

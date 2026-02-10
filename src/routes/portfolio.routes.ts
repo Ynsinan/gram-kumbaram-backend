@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { calculatePortfolio } from '../services/portfolio.service.js';
 import type { AuthenticatedRequest } from '../types/index.js';
@@ -6,7 +6,7 @@ import type { AuthenticatedRequest } from '../types/index.js';
 const router = Router();
 
 // All routes require authentication
-router.use(authMiddleware);
+router.use(authMiddleware as any);
 
 /**
  * @swagger
@@ -86,9 +86,9 @@ router.use(authMiddleware);
  *       500:
  *         description: Failed to calculate portfolio
  */
-router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const userId = (req as AuthenticatedRequest).user!.id;
     const portfolio = await calculatePortfolio(userId);
 
     res.json({
