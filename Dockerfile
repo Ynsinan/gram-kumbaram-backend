@@ -5,8 +5,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies for native modules
-RUN apk add --no-cache libc6-compat
+# 1. DÜZELTME: OpenSSL buraya eklendi
+RUN apk add --no-cache libc6-compat openssl
 
 # Copy package files
 COPY package*.json ./
@@ -33,6 +33,9 @@ WORKDIR /app
 
 # Set production environment
 ENV NODE_ENV=production
+
+# 2. DÜZELTME: Runner aşamasına OpenSSL ve uyumluluk kütüphaneleri eklendi (HAYATİ!)
+RUN apk add --no-cache openssl libc6-compat
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
