@@ -11,7 +11,7 @@ const envSchema = z.object({
   GOOGLE_CALLBACK_URL: z.string().url('GOOGLE_CALLBACK_URL must be a valid URL'),
   PORT: z.string().default('3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').default('http://localhost:5173'),
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
 });
 
 const parseEnv = () => {

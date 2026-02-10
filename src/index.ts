@@ -13,7 +13,9 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: env.NODE_ENV === 'production' 
+    ? [env.FRONTEND_URL, 'https://api.gramkumbaram.com']
+    : '*',
   credentials: true,
 }));
 app.use(express.json());
@@ -77,10 +79,11 @@ const startServer = async (): Promise<void> => {
     // Connect to database
     await connectDatabase();
 
-    // Start server
+    // Start server - bind to 0.0.0.0 for Docker
     const port = parseInt(env.PORT, 10);
-    app.listen(port, () => {
-      console.log(`Server running on port ${port}`);
+    const host = '0.0.0.0';
+    app.listen(port, host, () => {
+      console.log(`Server running on ${host}:${port}`);
       console.log(`API Docs: http://localhost:${port}/api-docs`);
       console.log(`Health: http://localhost:${port}/health`);
     });
