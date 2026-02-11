@@ -338,16 +338,13 @@ export const getGoldPrices = async (forceRefresh = false): Promise<GoldPricesRes
   priceCache = await scrapeGoldPrices();
   cacheTimestamp = now;
 
-  // Process each gold type: save to history and calculate daily change
+  // Calculate daily change for each gold type (without saving to DB)
   const allGoldTypes: GoldType[] = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
   for (const type of allGoldTypes) {
     const price = priceCache.prices[type];
 
     if (price.buyPrice > 0 && price.sellPrice > 0) {
-      // Save current price to database history
-      await savePriceToHistory(type, price.buyPrice, price.sellPrice);
-
-      // Get yesterday's closing price from database
+      // Get yesterday's 10 AM price from database
       const yesterdayPrice = await getYesterdayClosingPrice(type);
 
       // Calculate daily change percentage based on sell price
@@ -363,6 +360,23 @@ export const getGoldPrices = async (forceRefresh = false): Promise<GoldPricesRes
   }
 
   return priceCache;
+};
+
+// Save daily snapshot at 10 AM (called by cron job)
+export const saveDailySnapshot = async (): Promise<void> => {
+  console.log('📸 Taking daily price snapshot at 10 AM...');
+
+  const prices = await scrapeGoldPrices();
+  const allGoldTypes: GoldType[] = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
+
+  for (const type of allGoldTypes) {
+    const price = prices.prices[type];
+    if (price.buyPrice > 0 && price.sellPrice > 0) {
+      await savePriceToHistory(type, price.buyPrice, price.sellPrice);
+    }
+  }
+
+  console.log('✅ Daily snapshot saved successfully');
 };
 
 // Get price for a specific gold type

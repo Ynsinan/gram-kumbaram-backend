@@ -12,6 +12,9 @@ import { basicAuthMiddleware } from './middleware/basic-auth.middleware.js';
 // Import routes
 import { authRoutes, pricesRoutes, transactionsRoutes, portfolioRoutes } from './routes/index.js';
 
+// Import cron jobs
+import { initializeCronJobs } from './services/cron.service.js';
+
 const app = express();
 
 if (env.NODE_ENV === 'production') {
@@ -158,6 +161,9 @@ const startServer = async (): Promise<void> => {
   try {
     // Connect to database
     await connectDatabase();
+
+    // Initialize scheduled jobs (daily price snapshot at 10 AM)
+    initializeCronJobs();
 
     // Start server - bind to 0.0.0.0 for Docker
     const port = parseInt(env.PORT, 10);
