@@ -1,40 +1,110 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { swaggerSpec } from './config/swagger.js';
 import passport from './config/passport.js';
+import { globalRateLimiter } from './middleware/rate-limit.middleware.js';
+import { basicAuthMiddleware } from './middleware/basic-auth.middleware.js';
 
 // Import routes
 import { authRoutes, pricesRoutes, transactionsRoutes, portfolioRoutes } from './routes/index.js';
 
 const app = express();
 
+if (env.NODE_ENV === 'production') {
+  // Behind Dokploy/Traefik reverse proxy
+  app.set('trust proxy', 1);
+}
+
+app.disable('x-powered-by');
+
 // Middleware
-app.use(cors({
-  origin: env.NODE_ENV === 'production' 
-    ? [env.FRONTEND_URL, 'https://api.gramkumbaram.com']
-    : '*',
-  credentials: true,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(
+  helmet({
+    // Swagger UI uses inline styles; keep CSP off unless you want to tune it
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    referrerPolicy: { policy: 'no-referrer' },
+  })
+);
+
+app.use(globalRateLimiter);
+
+const allowedOrigins =
+  env.NODE_ENV === 'production'
+    ? env.FRONTEND_URL.split(',').map((value) => value.trim()).filter(Boolean)
+    : [];
+
+// Block unknown browser origins early with a clear 403
+app.use((req, res, next) => {
+  if (env.NODE_ENV !== 'production') {
+    next();
+    return;
+  }
+
+  const origin = req.headers.origin;
+  if (!origin) {
+    next();
+    return;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    next();
+    return;
+  }
+
+  res.status(403).json({
+    success: false,
+    error: 'Forbidden',
+    message: `CORS blocked origin: ${origin}`,
+  });
+});
+
+const corsMiddleware = cors({
+  origin: env.NODE_ENV === 'production' ? allowedOrigins : true,
+  credentials: false, // We use Authorization header (JWT), not cookies
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400,
+});
+
+app.use(corsMiddleware);
+app.options('*', corsMiddleware);
+
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 // Initialize Passport
 app.use(passport.initialize());
 
-// Swagger Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Gold Portfolio API Docs',
-}));
+const shouldEnableSwagger =
+  env.ENABLE_SWAGGER || env.NODE_ENV !== 'production';
 
-// Swagger JSON endpoint
-app.get('/api-docs.json', (_req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
+if (shouldEnableSwagger) {
+  const hasSwaggerBasicAuth = Boolean(env.SWAGGER_BASIC_AUTH_USER && env.SWAGGER_BASIC_AUTH_PASS);
+  const swaggerGuard = hasSwaggerBasicAuth
+    ? basicAuthMiddleware({
+        username: env.SWAGGER_BASIC_AUTH_USER!,
+        password: env.SWAGGER_BASIC_AUTH_PASS!,
+        realm: 'Swagger',
+      })
+    : (_req: express.Request, _res: express.Response, next: express.NextFunction) => next();
+
+  // Swagger Documentation
+  app.use('/api-docs', swaggerGuard, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Gold Portfolio API Docs',
+  }));
+
+  // Swagger JSON endpoint
+  app.get('/api-docs.json', swaggerGuard, (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+}
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -66,6 +136,16 @@ app.use((_req, res) => {
 // Error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
+
+  if (err.message.startsWith('CORS blocked origin:')) {
+    res.status(403).json({
+      success: false,
+      error: 'Forbidden',
+      message: err.message,
+    });
+    return;
+  }
+
   res.status(500).json({
     success: false,
     error: 'InternalServerError',

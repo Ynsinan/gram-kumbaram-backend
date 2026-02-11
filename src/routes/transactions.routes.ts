@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { transactionsRateLimiter } from '../middleware/rate-limit.middleware.js';
 import { createTransactionSchema } from '../validators/transaction.validator.js';
 import {
   createTransaction,
@@ -14,6 +15,8 @@ const router = Router();
 
 // All routes require authentication
 router.use(authMiddleware as any);
+// Rate limit transactional endpoints
+router.use(transactionsRateLimiter);
 
 /**
  * @swagger

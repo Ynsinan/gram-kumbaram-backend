@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { portfolioRateLimiter } from '../middleware/rate-limit.middleware.js';
 import { calculatePortfolio } from '../services/portfolio.service.js';
 import type { AuthenticatedRequest } from '../types/index.js';
 
@@ -7,6 +8,7 @@ const router = Router();
 
 // All routes require authentication
 router.use(authMiddleware as any);
+router.use(portfolioRateLimiter);
 
 /**
  * @swagger

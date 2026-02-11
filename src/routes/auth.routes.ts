@@ -4,8 +4,15 @@ import { generateToken } from '../middleware/auth.middleware.js';
 import { env } from '../config/env.js';
 import type { User } from '@prisma/client';
 import type { JWTPayload } from '../types/index.js';
+import { authRateLimiter } from '../middleware/rate-limit.middleware.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
+import type { AuthenticatedRequest } from '../types/index.js';
 
 const router = Router();
+const frontendBaseUrl = env.FRONTEND_URL.split(',')[0]!.trim();
+
+// Rate limit all auth endpoints (login brute force / callback abuse)
+router.use(authRateLimiter);
 
 /**
  * @swagger
@@ -42,13 +49,13 @@ router.get(
   '/google/callback',
   passport.authenticate('google', {
     session: false,
-    failureRedirect: `${env.FRONTEND_URL}/auth/login?error=auth_failed`,
+    failureRedirect: `${frontendBaseUrl}/auth/login?error=auth_failed`,
   }),
   (req: Request, res: Response) => {
     const user = req.user as User;
 
     if (!user) {
-      res.redirect(`${env.FRONTEND_URL}/auth/login?error=no_user`);
+      res.redirect(`${frontendBaseUrl}/auth/login?error=no_user`);
       return;
     }
 
@@ -60,8 +67,8 @@ router.get(
 
     const token = generateToken(payload);
 
-    // Redirect to frontend with token
-    res.redirect(`${env.FRONTEND_URL}/auth/callback?token=${token}`);
+    // Redirect to frontend with token in URL fragment (avoids leaking token via referrer)
+    res.redirect(`${frontendBaseUrl}/auth/callback#token=${encodeURIComponent(token)}`);
   }
 );
 
@@ -95,12 +102,10 @@ router.get(
  *       401:
  *         description: Unauthorized
  */
-router.get('/me', (req: Request, res: Response) => {
-  // This route requires auth middleware to be applied at the app level
-  // or you can import and use it here
-  const authHeader = req.headers.authorization;
+router.get('/me', authMiddleware as any, (req: Request, res: Response) => {
+  const user = (req as AuthenticatedRequest).user;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!user) {
     res.status(401).json({
       success: false,
       error: 'Unauthorized',
@@ -109,28 +114,13 @@ router.get('/me', (req: Request, res: Response) => {
     return;
   }
 
-  // Import auth verification
-  import('../middleware/auth.middleware.js').then(({ verifyToken }) => {
-    const token = authHeader.substring(7);
-    const payload = verifyToken(token);
-
-    if (!payload) {
-      res.status(401).json({
-        success: false,
-        error: 'Unauthorized',
-        message: 'Geçersiz veya süresi dolmuş token',
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        userId: payload.userId,
-        email: payload.email,
-        name: payload.name,
-      },
-    });
+  res.json({
+    success: true,
+    data: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    },
   });
 });
 

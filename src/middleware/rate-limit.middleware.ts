@@ -96,3 +96,15 @@ export const transactionsRateLimiter = createRateLimiter({
   maxRequests: 30, // 30 requests per minute
   message: 'İşlem limiti aşıldı. Lütfen 1 dakika bekleyin.',
 });
+
+export const portfolioRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 20, // 20 requests per minute
+  message: 'Portföy isteği limiti aşıldı. Lütfen 1 dakika bekleyin.',
+});
+
+export const globalRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 300, // 300 requests per minute per IP
+  message: 'Çok fazla istek. Lütfen daha sonra tekrar deneyin.',
+});
