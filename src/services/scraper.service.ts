@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import https from 'https';
 import type { GoldPrice, GoldPricesResponse, GoldType } from '../types/index.js';
-import { GOLD_TYPE_IDS } from '../types/index.js';
+import { GoldTypeEnum, GOLD_TYPES, GOLD_TYPE_NAMES } from '../types/index.js';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -19,24 +19,16 @@ const axiosInstance = axios.create({
   timeout: 15000,
 });
 
-// Display names for gold types
-const GOLD_TYPE_DISPLAY_NAMES: Record<GoldType, string> = {
-  gram: 'Gram Altın',
-  ceyrek: 'Çeyrek Altın',
-  yarim: 'Yarım Altın',
-  cumhuriyet: 'Cumhuriyet Altını',
-};
-
 // Parse Turkish format: 6.908,23 (dot=thousand, comma=decimal)
 const parseTurkishPrice = (priceText: string): number => {
   if (!priceText) return 0;
-  
+
   const cleaned = priceText
     .trim()
     .replace(/\s/g, '')
     .replace(/\./g, '')  // Remove thousand separator
     .replace(',', '.');   // Convert decimal separator
-  
+
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? 0 : parsed;
 };
@@ -44,12 +36,12 @@ const parseTurkishPrice = (priceText: string): number => {
 // Parse international format: 5323.9200 (dot=decimal)
 const parseInternationalPrice = (priceText: string): number => {
   if (!priceText) return 0;
-  
+
   const cleaned = priceText
     .trim()
     .replace(/\s/g, '')
     .replace(/,/g, '');  // Remove any commas (thousand separator)
-  
+
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? 0 : parsed;
 };
@@ -67,14 +59,12 @@ const scrapeAltinIn = async (): Promise<Partial<Record<GoldType, GoldPrice>>> =>
   const $ = cheerio.load(response.data);
   const prices: Partial<Record<GoldType, GoldPrice>> = {};
 
-  // altin.in structure: h2 > a with href containing gold type, followed by price list items
-  // Pattern: ## [Gram Altın Fiyatları](https://altin.in/fiyat/gram-altin) then prices in next li elements
-  
+  // URL pattern → integer gold type mapping
   const urlPatterns: Record<string, GoldType> = {
-    'gram-altin': 'gram',
-    'ceyrek-altin': 'ceyrek',
-    'yarim-altin': 'yarim',
-    'cumhuriyet-altini': 'cumhuriyet',
+    'gram-altin': GoldTypeEnum.GRAM,
+    'ceyrek-altin': GoldTypeEnum.CEYREK,
+    'yarim-altin': GoldTypeEnum.YARIM,
+    'cumhuriyet-altini': GoldTypeEnum.CUMHURIYET,
   };
 
   // Find all h2 elements with links
@@ -82,9 +72,9 @@ const scrapeAltinIn = async (): Promise<Partial<Record<GoldType, GoldPrice>>> =>
     const $el = $(element);
     const href = $el.attr('href') || $el.find('a').attr('href') || '';
     const text = $el.text().toLowerCase();
-    
+
     let goldType: GoldType | null = null;
-    
+
     // Match by URL
     for (const [pattern, type] of Object.entries(urlPatterns)) {
       if (href.includes(pattern)) {
@@ -92,29 +82,29 @@ const scrapeAltinIn = async (): Promise<Partial<Record<GoldType, GoldPrice>>> =>
         break;
       }
     }
-    
+
     // Match by text if URL didn't match
     if (!goldType) {
-      if (text.includes('gram altın') || text.includes('gram altin')) goldType = 'gram';
-      else if (text.includes('çeyrek') || text.includes('ceyrek')) goldType = 'ceyrek';
-      else if (text.includes('yarım') || text.includes('yarim')) goldType = 'yarim';
-      else if (text.includes('cumhuriyet')) goldType = 'cumhuriyet';
+      if (text.includes('gram altın') || text.includes('gram altin')) goldType = GoldTypeEnum.GRAM;
+      else if (text.includes('çeyrek') || text.includes('ceyrek')) goldType = GoldTypeEnum.CEYREK;
+      else if (text.includes('yarım') || text.includes('yarim')) goldType = GoldTypeEnum.YARIM;
+      else if (text.includes('cumhuriyet')) goldType = GoldTypeEnum.CUMHURIYET;
     }
-    
+
     if (!goldType || prices[goldType]) return;
-    
+
     // Find parent container and look for price values
     const $parent = $el.closest('li, div, section');
     const $nextSiblings = $parent.nextAll('li').slice(0, 2);
-    
+
     if ($nextSiblings.length >= 2) {
       const buyPrice = parseInternationalPrice($nextSiblings.eq(0).text());
       const sellPrice = parseInternationalPrice($nextSiblings.eq(1).text());
-      
+
       if (buyPrice > 0 && sellPrice > 0) {
         prices[goldType] = {
-          id: GOLD_TYPE_IDS[goldType],
-          name: GOLD_TYPE_DISPLAY_NAMES[goldType],
+          id: goldType,
+          name: GOLD_TYPE_NAMES[goldType],
           buyPrice,
           sellPrice,
         };
@@ -123,29 +113,28 @@ const scrapeAltinIn = async (): Promise<Partial<Record<GoldType, GoldPrice>>> =>
   });
 
   // Alternative: Look for price patterns near gold type mentions
-  // altin.in uses format: 5323.9200 (dot as decimal)
   if (Object.keys(prices).length < 4) {
     const patterns: Array<{ type: GoldType; regex: RegExp }> = [
-      { type: 'gram', regex: /Gram\s*Alt[ıi]n\s*Fiyatlar[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
-      { type: 'ceyrek', regex: /[ÇC]eyrek\s*Alt[ıi]n\s*Fiyat[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
-      { type: 'yarim', regex: /Yar[ıi]m\s*Alt[ıi]n\s*Fiyatlar[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
-      { type: 'cumhuriyet', regex: /Cumhuriyet\s*Alt[ıi]n[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
+      { type: GoldTypeEnum.GRAM, regex: /Gram\s*Alt[ıi]n\s*Fiyatlar[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
+      { type: GoldTypeEnum.CEYREK, regex: /[ÇC]eyrek\s*Alt[ıi]n\s*Fiyat[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
+      { type: GoldTypeEnum.YARIM, regex: /Yar[ıi]m\s*Alt[ıi]n\s*Fiyatlar[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
+      { type: GoldTypeEnum.CUMHURIYET, regex: /Cumhuriyet\s*Alt[ıi]n[ıi][^\d]*(\d+\.\d+)[^\d]*(\d+\.\d+)/i },
     ];
 
     const pageText = $('body').text();
-    
+
     for (const { type, regex } of patterns) {
       if (prices[type]) continue;
-      
+
       const match = pageText.match(regex);
       if (match?.[1] && match[2]) {
         const buyPrice = parseInternationalPrice(match[1]);
         const sellPrice = parseInternationalPrice(match[2]);
-        
+
         if (buyPrice > 0 && sellPrice > 0) {
           prices[type] = {
-            id: GOLD_TYPE_IDS[type],
-            name: GOLD_TYPE_DISPLAY_NAMES[type],
+            id: type,
+            name: GOLD_TYPE_NAMES[type],
             buyPrice,
             sellPrice,
           };
@@ -171,17 +160,17 @@ const scrapeBigpara = async (): Promise<Partial<Record<GoldType, GoldPrice>>> =>
   const prices: Partial<Record<GoldType, GoldPrice>> = {};
 
   const urlPatterns: Record<string, GoldType> = {
-    'gram-altin-fiyati': 'gram',
-    'ceyrek-altin-fiyati': 'ceyrek',
-    'yarim-altin-fiyati': 'yarim',
-    'cumhuriyet-altini-fiyati': 'cumhuriyet',
+    'gram-altin-fiyati': GoldTypeEnum.GRAM,
+    'ceyrek-altin-fiyati': GoldTypeEnum.CEYREK,
+    'yarim-altin-fiyati': GoldTypeEnum.YARIM,
+    'cumhuriyet-altini-fiyati': GoldTypeEnum.CUMHURIYET,
   };
 
   // Find links and their associated prices
   $('a').each((_, element) => {
     const $link = $(element);
     const href = $link.attr('href') || '';
-    
+
     let goldType: GoldType | null = null;
     for (const [pattern, type] of Object.entries(urlPatterns)) {
       if (href.includes(pattern)) {
@@ -189,23 +178,23 @@ const scrapeBigpara = async (): Promise<Partial<Record<GoldType, GoldPrice>>> =>
         break;
       }
     }
-    
+
     if (!goldType || prices[goldType]) return;
-    
+
     // Find prices near this link
     const $parent = $link.closest('li, tr, div');
     const parentText = $parent.text();
     const priceMatches = parentText.match(/(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/g);
-    
+
     if (priceMatches && priceMatches.length >= 2) {
       // Bigpara uses Turkish format: 6.908,23
       const buyPrice = parseTurkishPrice(priceMatches[0] ?? '0');
       const sellPrice = parseTurkishPrice(priceMatches[1] ?? '0');
-      
+
       if (buyPrice > 0 && sellPrice > 0) {
         prices[goldType] = {
-          id: GOLD_TYPE_IDS[goldType],
-          name: GOLD_TYPE_DISPLAY_NAMES[goldType],
+          id: goldType,
+          name: GOLD_TYPE_NAMES[goldType],
           buyPrice,
           sellPrice,
         };
@@ -233,11 +222,12 @@ export const scrapeGoldPrices = async (): Promise<GoldPricesResponse> => {
     try {
       console.log('Fetching prices from fallback source...');
       const fallbackPrices = await scrapeBigpara();
-      
+
       // Merge prices, prefer existing (primary) prices
-      for (const [type, price] of Object.entries(fallbackPrices)) {
-        if (!prices[type as GoldType]) {
-          prices[type as GoldType] = price;
+      for (const [typeStr, price] of Object.entries(fallbackPrices)) {
+        const type = Number(typeStr) as GoldType;
+        if (!prices[type]) {
+          prices[type] = price;
         }
       }
       console.log(`Combined sources returned ${Object.keys(prices).length} gold types`);
@@ -247,13 +237,12 @@ export const scrapeGoldPrices = async (): Promise<GoldPricesResponse> => {
   }
 
   // Ensure all gold types have prices
-  const allGoldTypes: GoldType[] = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
-  for (const type of allGoldTypes) {
+  for (const type of GOLD_TYPES) {
     if (!prices[type]) {
-      console.warn(`Missing price data for ${type}`);
+      console.warn(`Missing price data for ${GOLD_TYPE_NAMES[type]}`);
       prices[type] = {
-        id: GOLD_TYPE_IDS[type],
-        name: GOLD_TYPE_DISPLAY_NAMES[type],
+        id: type,
+        name: GOLD_TYPE_NAMES[type],
         buyPrice: 0,
         sellPrice: 0,
       };
@@ -291,9 +280,9 @@ const savePriceToHistory = async (goldType: GoldType, buyPrice: number, sellPric
         sellPrice,
       },
     });
-    console.log(`💾 Saved price to history: ${goldType} - ${sellPrice} TL`);
+    console.log(`💾 Saved price to history: ${GOLD_TYPE_NAMES[goldType]} - ${sellPrice} TL`);
   } catch (error) {
-    console.error(`Failed to save price to history for ${goldType}:`, error);
+    console.error(`Failed to save price to history for ${GOLD_TYPE_NAMES[goldType]}:`, error);
   }
 };
 
@@ -317,13 +306,13 @@ const getYesterdayClosingPrice = async (goldType: GoldType): Promise<number | nu
     });
 
     if (lastPriceYesterday) {
-      console.log(`📊 Yesterday's closing price for ${goldType}: ${lastPriceYesterday.sellPrice} TL`);
+      console.log(`📊 Yesterday's closing price for ${GOLD_TYPE_NAMES[goldType]}: ${lastPriceYesterday.sellPrice} TL`);
       return lastPriceYesterday.sellPrice;
     }
 
     return null;
   } catch (error) {
-    console.error(`Failed to get yesterday's closing price for ${goldType}:`, error);
+    console.error(`Failed to get yesterday's closing price for ${GOLD_TYPE_NAMES[goldType]}:`, error);
     return null;
   }
 };
@@ -339,8 +328,7 @@ export const getGoldPrices = async (forceRefresh = false): Promise<GoldPricesRes
   cacheTimestamp = now;
 
   // Calculate daily change for each gold type (without saving to DB)
-  const allGoldTypes: GoldType[] = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
-  for (const type of allGoldTypes) {
+  for (const type of GOLD_TYPES) {
     const price = priceCache.prices[type];
 
     if (price.buyPrice > 0 && price.sellPrice > 0) {
@@ -350,11 +338,11 @@ export const getGoldPrices = async (forceRefresh = false): Promise<GoldPricesRes
       // Calculate daily change percentage based on sell price
       if (yesterdayPrice !== null && yesterdayPrice > 0) {
         price.dailyChangePercent = calculateDailyChange(price.sellPrice, yesterdayPrice);
-        console.log(`📊 Daily change for ${type}: ${price.dailyChangePercent.toFixed(2)}% (Yesterday: ${yesterdayPrice} TL → Today: ${price.sellPrice} TL)`);
+        console.log(`📊 Daily change for ${GOLD_TYPE_NAMES[type]}: ${price.dailyChangePercent.toFixed(2)}% (Yesterday: ${yesterdayPrice} TL → Today: ${price.sellPrice} TL)`);
       } else {
         // No data from yesterday, show 0%
         price.dailyChangePercent = 0;
-        console.log(`📊 No yesterday data for ${type}, change: 0%`);
+        console.log(`📊 No yesterday data for ${GOLD_TYPE_NAMES[type]}, change: 0%`);
       }
     }
   }
@@ -367,9 +355,8 @@ export const saveDailySnapshot = async (): Promise<void> => {
   console.log('📸 Taking daily price snapshot at 10 AM...');
 
   const prices = await scrapeGoldPrices();
-  const allGoldTypes: GoldType[] = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
 
-  for (const type of allGoldTypes) {
+  for (const type of GOLD_TYPES) {
     const price = prices.prices[type];
     if (price.buyPrice > 0 && price.sellPrice > 0) {
       await savePriceToHistory(type, price.buyPrice, price.sellPrice);

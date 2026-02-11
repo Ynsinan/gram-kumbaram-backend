@@ -60,8 +60,9 @@ router.use(portfolioRateLimiter);
  *                         type: object
  *                         properties:
  *                           goldType:
- *                             type: string
- *                             enum: [gram, ceyrek, yarim, cumhuriyet]
+ *                             type: integer
+ *                             enum: [1, 2, 3, 4]
+ *                             description: Gold type ID (1=gram, 2=ceyrek, 3=yarim, 4=cumhuriyet)
  *                           netQuantity:
  *                             type: number
  *                             description: Current holdings

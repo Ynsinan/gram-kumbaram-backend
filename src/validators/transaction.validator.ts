@@ -5,11 +5,15 @@ export const createTransactionSchema = z.object({
   type: z.enum(['BUY', 'SELL'], {
     errorMap: () => ({ message: 'İşlem türü ALIŞ veya SATIŞ olmalıdır' }),
   }),
-  goldType: z.enum(GOLD_TYPES, {
-    errorMap: () => ({
+  goldType: z
+    .number({
+      required_error: 'Altın türü zorunludur',
+      invalid_type_error: 'Altın türü sayı olmalıdır',
+    })
+    .int('Altın türü tam sayı olmalıdır')
+    .refine((val) => (GOLD_TYPES as readonly number[]).includes(val), {
       message: `Altın türü şunlardan biri olmalıdır: ${GOLD_TYPES.join(', ')}`,
     }),
-  }),
   quantity: z
     .number({
       required_error: 'Miktar zorunludur',

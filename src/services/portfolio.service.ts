@@ -47,7 +47,7 @@ export const calculatePortfolio = async (userId: string): Promise<PortfolioSumma
 
   // Process transactions in chronological order
   for (const tx of transactions) {
-    const goldType = tx.goldType as GoldType;
+    const goldType = tx.goldType as unknown as GoldType;
     const group = groups[goldType];
 
     if (!group) continue;

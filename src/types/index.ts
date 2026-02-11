@@ -1,9 +1,39 @@
 import type { Request } from 'express';
 import type { User } from '@prisma/client';
 
-// Gold Types - Only these are valid
-export const GOLD_TYPES = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'] as const;
-export type GoldType = (typeof GOLD_TYPES)[number];
+// Gold Type Enum - Integer-based
+export const GoldTypeEnum = {
+  GRAM: 1,
+  CEYREK: 2,
+  YARIM: 3,
+  CUMHURIYET: 4,
+} as const;
+
+export type GoldType = (typeof GoldTypeEnum)[keyof typeof GoldTypeEnum]; // 1 | 2 | 3 | 4
+
+// All valid gold type IDs as array
+export const GOLD_TYPES = [
+  GoldTypeEnum.GRAM,
+  GoldTypeEnum.CEYREK,
+  GoldTypeEnum.YARIM,
+  GoldTypeEnum.CUMHURIYET,
+] as const;
+
+// Display names (Turkish)
+export const GOLD_TYPE_NAMES: Record<GoldType, string> = {
+  [GoldTypeEnum.GRAM]: 'Gram Altın',
+  [GoldTypeEnum.CEYREK]: 'Çeyrek Altın',
+  [GoldTypeEnum.YARIM]: 'Yarım Altın',
+  [GoldTypeEnum.CUMHURIYET]: 'Cumhuriyet Altını',
+};
+
+// Reverse mapping: ID → internal code string (for scraper URL matching)
+export const GOLD_TYPE_CODES: Record<GoldType, string> = {
+  [GoldTypeEnum.GRAM]: 'gram',
+  [GoldTypeEnum.CEYREK]: 'ceyrek',
+  [GoldTypeEnum.YARIM]: 'yarim',
+  [GoldTypeEnum.CUMHURIYET]: 'cumhuriyet',
+};
 
 // Transaction Types
 export type TransactionTypeEnum = 'BUY' | 'SELL';
@@ -13,17 +43,9 @@ export interface AuthenticatedRequest extends Request {
   user?: User;
 }
 
-// Gold Type IDs (numeric)
-export const GOLD_TYPE_IDS: Record<GoldType, number> = {
-  gram: 1,
-  ceyrek: 2,
-  yarim: 3,
-  cumhuriyet: 4,
-} as const;
-
 // Gold Prices from scraper
 export interface GoldPrice {
-  id: number;
+  id: GoldType;
   name: string;
   buyPrice: number;
   sellPrice: number;

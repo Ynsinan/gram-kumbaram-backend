@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getGoldPrices } from '../services/scraper.service.js';
 import { pricesRateLimiter } from '../middleware/rate-limit.middleware.js';
+import { GOLD_TYPES } from '../types/index.js';
+import type { GoldType } from '../types/index.js';
 
 const router = Router();
 
@@ -36,15 +38,9 @@ router.use(pricesRateLimiter);
  *                   properties:
  *                     prices:
  *                       type: object
- *                       properties:
- *                         gram:
- *                           $ref: '#/components/schemas/GoldPrice'
- *                         ceyrek:
- *                           $ref: '#/components/schemas/GoldPrice'
- *                         yarim:
- *                           $ref: '#/components/schemas/GoldPrice'
- *                         cumhuriyet:
- *                           $ref: '#/components/schemas/GoldPrice'
+ *                       description: Gold prices keyed by gold type ID (1=gram, 2=ceyrek, 3=yarim, 4=cumhuriyet)
+ *                       additionalProperties:
+ *                         $ref: '#/components/schemas/GoldPrice'
  *                     lastUpdated:
  *                       type: string
  *                       format: date-time
@@ -83,9 +79,9 @@ router.get('/', async (req: Request, res: Response) => {
  *         name: goldType
  *         required: true
  *         schema:
- *           type: string
- *           enum: [gram, ceyrek, yarim, cumhuriyet]
- *         description: Type of gold
+ *           type: integer
+ *           enum: [1, 2, 3, 4]
+ *         description: Type of gold (1=gram, 2=ceyrek, 3=yarim, 4=cumhuriyet)
  *     responses:
  *       200:
  *         description: Gold price for specified type
@@ -105,20 +101,20 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.get('/:goldType', async (req: Request, res: Response) => {
   try {
-    const { goldType } = req.params;
-    const validTypes = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
+    const goldTypeParam = parseInt(req.params.goldType ?? '', 10);
 
-    if (!goldType || !validTypes.includes(goldType)) {
+    if (isNaN(goldTypeParam) || !(GOLD_TYPES as readonly number[]).includes(goldTypeParam)) {
       res.status(400).json({
         success: false,
         error: 'BadRequest',
-        message: `Geçersiz altın türü. Şunlardan biri olmalıdır: ${validTypes.join(', ')}`,
+        message: `Geçersiz altın türü. Şunlardan biri olmalıdır: ${GOLD_TYPES.join(', ')}`,
       });
       return;
     }
 
+    const goldType = goldTypeParam as GoldType;
     const prices = await getGoldPrices();
-    const price = prices.prices[goldType as keyof typeof prices.prices];
+    const price = prices.prices[goldType];
 
     res.json({
       success: true,

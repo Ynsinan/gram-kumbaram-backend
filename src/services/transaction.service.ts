@@ -1,5 +1,6 @@
 import { prisma } from '../config/database.js';
-import type { GoldType, TransactionTypeEnum } from '../types/index.js';
+import type { GoldType } from '../types/index.js';
+import { GOLD_TYPE_NAMES } from '../types/index.js';
 import type { CreateTransactionInput } from '../validators/transaction.validator.js';
 
 export interface TransactionServiceResult {
@@ -43,7 +44,8 @@ export const createTransaction = async (
   userId: string,
   input: CreateTransactionInput
 ): Promise<TransactionServiceResult> => {
-  const { type, goldType, quantity, pricePerUnit, date } = input;
+  const { type, goldType: goldTypeInput, quantity, pricePerUnit, date } = input;
+  const goldType = goldTypeInput as GoldType;
 
   // If SELL, validate sufficient holdings
   if (type === 'SELL') {
@@ -52,7 +54,7 @@ export const createTransaction = async (
     if (currentHoldings < quantity) {
       return {
         success: false,
-        error: `Yetersiz altın bakiyesi. Mevcut: ${currentHoldings} ${goldType}, satılmak istenen: ${quantity}.`,
+        error: `Yetersiz altın bakiyesi. Mevcut: ${currentHoldings} ${GOLD_TYPE_NAMES[goldType as GoldType]}, satılmak istenen: ${quantity}.`,
       };
     }
   }
@@ -109,13 +111,14 @@ export const deleteTransaction = async (
 
   // If deleting a BUY, check if it would make holdings negative
   if (transaction.type === 'BUY') {
-    const currentHoldings = await calculateHoldings(userId, transaction.goldType as GoldType);
+    const goldType = transaction.goldType as unknown as GoldType;
+    const currentHoldings = await calculateHoldings(userId, goldType);
     const holdingsAfterDelete = currentHoldings - transaction.quantity;
 
     if (holdingsAfterDelete < 0) {
       return {
         success: false,
-        error: `Bu ALIŞ işlemi silinemez. Silme işlemi sonrasında bakiye negatif olur (${holdingsAfterDelete} ${transaction.goldType}).`,
+        error: `Bu ALIŞ işlemi silinemez. Silme işlemi sonrasında bakiye negatif olur (${holdingsAfterDelete} ${GOLD_TYPE_NAMES[goldType]}).`,
       };
     }
   }
@@ -136,14 +139,15 @@ export const getHoldingsSummary = async (userId: string) => {
     where: { userId },
   });
 
-  const holdings: Record<string, { buyQuantity: number; sellQuantity: number; netQuantity: number }> = {};
+  const holdings: Record<number, { buyQuantity: number; sellQuantity: number; netQuantity: number }> = {};
 
   for (const tx of transactions) {
-    if (!holdings[tx.goldType]) {
-      holdings[tx.goldType] = { buyQuantity: 0, sellQuantity: 0, netQuantity: 0 };
+    const goldTypeId = tx.goldType as unknown as number;
+    if (!holdings[goldTypeId]) {
+      holdings[goldTypeId] = { buyQuantity: 0, sellQuantity: 0, netQuantity: 0 };
     }
 
-    const holding = holdings[tx.goldType]!;
+    const holding = holdings[goldTypeId]!;
     
     if (tx.type === 'BUY') {
       holding.buyQuantity += tx.quantity;

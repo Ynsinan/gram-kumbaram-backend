@@ -29,7 +29,7 @@ model GoldTransaction {
   userId          String
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   type            TransactionType
-  goldType        String          // 'gram', 'ceyrek', 'yarim', 'cumhuriyet'
+  goldType        Int             // 1=gram, 2=ceyrek, 3=yarim, 4=cumhuriyet
   quantity        Float           // Always positive
   pricePerUnit    Float           // Price at transaction time
   transactionDate DateTime
@@ -43,7 +43,7 @@ model GoldTransaction {
 
 model GoldPriceHistory {
   id         Int      @id @default(autoincrement())
-  goldType   String   // 'gram', 'ceyrek', 'yarim', 'cumhuriyet'
+  goldType   Int      // 1=gram, 2=ceyrek, 3=yarim, 4=cumhuriyet
   buyPrice   Float
   sellPrice  Float
   fetchedAt  DateTime @default(now())
