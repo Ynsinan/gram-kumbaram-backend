@@ -40,3 +40,14 @@ model GoldTransaction {
   @@index([transactionDate])
   @@map("gold_transactions")
 }
+
+model GoldPriceHistory {
+  id         Int      @id @default(autoincrement())
+  goldType   String   // 'gram', 'ceyrek', 'yarim', 'cumhuriyet'
+  buyPrice   Float
+  sellPrice  Float
+  fetchedAt  DateTime @default(now())
+
+  @@index([goldType, fetchedAt])
+  @@map("gold_price_history")
+}

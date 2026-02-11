@@ -27,6 +27,7 @@ export interface GoldPrice {
   name: string;
   buyPrice: number;
   sellPrice: number;
+  dailyChangePercent?: number; // Günlük değişim yüzdesi (%)
 }
 
 export interface GoldPricesResponse {

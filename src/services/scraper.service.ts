@@ -3,6 +3,9 @@ import * as cheerio from 'cheerio';
 import https from 'https';
 import type { GoldPrice, GoldPricesResponse, GoldType } from '../types/index.js';
 import { GOLD_TYPE_IDS } from '../types/index.js';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 const ALTIN_IN_URL = 'https://altin.in/';
 const BIGPARA_URL = 'https://bigpara.hurriyet.com.tr/altin/';
@@ -272,16 +275,93 @@ let priceCache: GoldPricesResponse | null = null;
 let cacheTimestamp: number = 0;
 const CACHE_DURATION_MS = 60 * 1000; // 1 minute cache
 
+// Calculate daily change percentage
+const calculateDailyChange = (currentPrice: number, openingPrice: number): number => {
+  if (openingPrice === 0) return 0;
+  return ((currentPrice - openingPrice) / openingPrice) * 100;
+};
+
+// Save price to database history
+const savePriceToHistory = async (goldType: GoldType, buyPrice: number, sellPrice: number): Promise<void> => {
+  try {
+    await prisma.goldPriceHistory.create({
+      data: {
+        goldType,
+        buyPrice,
+        sellPrice,
+      },
+    });
+    console.log(`💾 Saved price to history: ${goldType} - ${sellPrice} TL`);
+  } catch (error) {
+    console.error(`Failed to save price to history for ${goldType}:`, error);
+  }
+};
+
+// Get yesterday's closing price from database (last price of previous day)
+const getYesterdayClosingPrice = async (goldType: GoldType): Promise<number | null> => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of today (midnight)
+
+    // Get the last price from yesterday (before today's midnight)
+    const lastPriceYesterday = await prisma.goldPriceHistory.findFirst({
+      where: {
+        goldType,
+        fetchedAt: {
+          lt: today, // Before today's midnight
+        },
+      },
+      orderBy: {
+        fetchedAt: 'desc', // Get the latest price before today
+      },
+    });
+
+    if (lastPriceYesterday) {
+      console.log(`📊 Yesterday's closing price for ${goldType}: ${lastPriceYesterday.sellPrice} TL`);
+      return lastPriceYesterday.sellPrice;
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Failed to get yesterday's closing price for ${goldType}:`, error);
+    return null;
+  }
+};
+
 export const getGoldPrices = async (forceRefresh = false): Promise<GoldPricesResponse> => {
   const now = Date.now();
-  
+
   if (!forceRefresh && priceCache && now - cacheTimestamp < CACHE_DURATION_MS) {
     return priceCache;
   }
 
   priceCache = await scrapeGoldPrices();
   cacheTimestamp = now;
-  
+
+  // Process each gold type: save to history and calculate daily change
+  const allGoldTypes: GoldType[] = ['gram', 'ceyrek', 'yarim', 'cumhuriyet'];
+  for (const type of allGoldTypes) {
+    const price = priceCache.prices[type];
+
+    if (price.buyPrice > 0 && price.sellPrice > 0) {
+      // Save current price to database history
+      await savePriceToHistory(type, price.buyPrice, price.sellPrice);
+
+      // Get yesterday's closing price from database
+      const yesterdayPrice = await getYesterdayClosingPrice(type);
+
+      // Calculate daily change percentage based on sell price
+      if (yesterdayPrice !== null && yesterdayPrice > 0) {
+        price.dailyChangePercent = calculateDailyChange(price.sellPrice, yesterdayPrice);
+        console.log(`📊 Daily change for ${type}: ${price.dailyChangePercent.toFixed(2)}% (Yesterday: ${yesterdayPrice} TL → Today: ${price.sellPrice} TL)`);
+      } else {
+        // No data from yesterday, show 0%
+        price.dailyChangePercent = 0;
+        console.log(`📊 No yesterday data for ${type}, change: 0%`);
+      }
+    }
+  }
+
   return priceCache;
 };
 
