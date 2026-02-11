@@ -3,10 +3,14 @@ node_modules/
 yarn.lock
 pnpm-lock.yaml
 
-# Environment variables
+# Environment variables (active files only)
 .env
-.env.local
 .env.*.local
+
+# Keep template files in git
+# .env.example
+# .env.local (template)
+# .env.production (template)
 
 # Build outputs
 dist/
@@ -57,3 +61,4 @@ coverage/
 
 # Docker
 .docker/
+.env.real

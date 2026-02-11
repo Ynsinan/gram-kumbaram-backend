@@ -5,8 +5,12 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:local": "cp .env.local .env && tsx watch src/index.ts",
+    "dev:prod": "cp .env.production .env && tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:local": "cp .env.local .env && node dist/index.js",
+    "start:prod": "cp .env.production .env && node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:prod": "prisma migrate deploy",

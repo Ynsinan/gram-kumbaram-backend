@@ -30,34 +30,45 @@ Physical gold investment tracker API with real-time pricing from altin.in.
 
 - Node.js 20+
 - Docker & Docker Compose
-- Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com/))
+- Google OAuth credentials (see [OAUTH_SETUP.md](./OAUTH_SETUP.md) for detailed instructions)
 
 ### 1. Clone and Install
 
 ```bash
 git clone <repo-url>
-cd physical-golden-wallet
+cd physical-golden-wallet-backend
 npm install
 ```
 
 ### 2. Environment Setup
 
+**IMPORTANT:** Read [OAUTH_SETUP.md](./OAUTH_SETUP.md) for complete OAuth configuration guide.
+
+#### For Local Development
+
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your values:
+Edit `.env` with your **local development** values:
 
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gold_wallet?schema=public"
-JWT_SECRET="your-super-secret-jwt-key-min-32-chars"
-GOOGLE_CLIENT_ID="your-google-client-id.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET="your-google-client-secret"
-GOOGLE_CALLBACK_URL="http://localhost:3000/auth/google/callback"
-PORT=3000
+JWT_SECRET="local-dev-secret-key-change-in-production"
+GOOGLE_CLIENT_ID="your-local-google-client-id"
+GOOGLE_CLIENT_SECRET="your-local-google-client-secret"
+GOOGLE_CALLBACK_URL="http://localhost:4000/auth/google/callback"
+PORT=4000
 NODE_ENV=development
-FRONTEND_URL="http://localhost:5173"
+FRONTEND_URL="http://localhost:3000"
 ```
+
+#### For Production
+
+See [OAUTH_SETUP.md](./OAUTH_SETUP.md) for production OAuth setup. You'll need to:
+1. Create a separate OAuth Client in Google Console for production
+2. Configure `.env.production` with production credentials
+3. Use `npm run start:prod` to run with production settings
 
 ### 3. Start PostgreSQL (Docker)
 
@@ -156,14 +167,53 @@ docker-compose up -d --build
 ### Available Scripts
 
 ```bash
-npm run dev          # Start dev server with hot-reload
-npm run build        # Build TypeScript
-npm run start        # Start production server
+# Development
+npm run dev              # Start dev server (uses .env)
+npm run dev:local        # Start dev with .env.local
+npm run dev:prod         # Start dev with .env.production (testing)
+
+# Production
+npm run build            # Build TypeScript
+npm run start            # Start production server (uses .env)
+npm run start:local      # Start with .env.local
+npm run start:prod       # Start with .env.production
+
+# Database
 npm run prisma:generate  # Generate Prisma client
 npm run prisma:migrate   # Run dev migrations
+npm run prisma:migrate:prod  # Deploy production migrations
 npm run prisma:studio    # Open Prisma Studio
-npm run docker:dev   # Start dev PostgreSQL
-npm run docker:down  # Stop Docker containers
+
+# Docker
+npm run docker:dev       # Start dev PostgreSQL
+npm run docker:down      # Stop Docker containers
+```
+
+### Environment-Specific Commands
+
+The project supports multiple environment configurations:
+
+- **`.env`** - Active environment file (git-ignored)
+- **`.env.local`** - Local development settings
+- **`.env.production`** - Production settings
+- **`.env.example`** - Template for new setups
+
+To switch environments:
+```bash
+# Use local environment
+npm run dev:local
+
+# Use production environment (for testing)
+npm run dev:prod
+```
+
+Or manually copy the desired environment file:
+```bash
+# Switch to local
+cp .env.local .env
+
+# Switch to production
+cp .env.production .env
 ```
 
 ### Project Structure
