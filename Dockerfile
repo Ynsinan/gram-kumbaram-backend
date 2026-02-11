@@ -31,8 +31,40 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Set production environment
+# ============================================
+# Environment Variables
+# ============================================
+# These are default values for production
+# Override these in Dokploy or docker run with -e flag
+# ============================================
+
+# Server Configuration
 ENV NODE_ENV=production
+ENV PORT=4000
+
+# Database (must be provided at runtime)
+# ENV DATABASE_URL=""
+
+# JWT Configuration (must be provided at runtime)
+# ENV JWT_SECRET=""
+# ENV JWT_EXPIRES_IN="7d"
+
+# Google OAuth (must be provided at runtime)
+# ENV GOOGLE_CLIENT_ID=""
+# ENV GOOGLE_CLIENT_SECRET=""
+# ENV GOOGLE_CALLBACK_URL=""
+
+# Frontend URL (must be provided at runtime)
+# ENV FRONTEND_URL=""
+
+# Feature Flags
+ENV ENABLE_SWAGGER=false
+ENV ENABLE_DEBUG=false
+ENV ENABLE_RATE_LIMITING=true
+
+# API Configuration
+ENV API_TIMEOUT=30000
+ENV MAX_REQUEST_SIZE=100kb
 
 # 2. DÜZELTME: Runner aşamasına OpenSSL ve uyumluluk kütüphaneleri eklendi (HAYATİ!)
 RUN apk add --no-cache openssl libc6-compat
@@ -57,11 +89,8 @@ RUN chown -R appuser:nodejs /app
 
 USER appuser
 
-# Default port (can be overridden by environment)
-ENV PORT=3000
-
-# Expose port
-EXPOSE 3000
+# Expose port (matches PORT env variable)
+EXPOSE 4000
 
 # Health check disabled - let Dokploy/Traefik handle it
 # HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \

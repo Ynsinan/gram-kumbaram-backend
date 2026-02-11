@@ -7,9 +7,28 @@ import type { JWTPayload } from '../types/index.js';
 import { createRateLimiter, authRateLimiter } from '../middleware/rate-limit.middleware.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import type { AuthenticatedRequest } from '../types/index.js';
+import { randomUUID } from 'crypto';
 
 const router = Router();
 const frontendBaseUrl = env.FRONTEND_URL.split(',')[0]!.trim();
+
+// In-memory store for authorization codes (use Redis in production)
+interface AuthCodeData {
+  user: User;
+  expiresAt: number;
+}
+
+const authCodes = new Map<string, AuthCodeData>();
+
+// Clean up expired codes every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, data] of authCodes.entries()) {
+    if (data.expiresAt < now) {
+      authCodes.delete(code);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Custom rate limiter for Google OAuth that redirects instead of returning JSON
 const authGoogleRateLimiter = createRateLimiter({
@@ -60,10 +79,10 @@ router.get(
  *   get:
  *     summary: Google OAuth callback
  *     tags: [Authentication]
- *     description: Handles the OAuth callback from Google and issues JWT
+ *     description: Handles the OAuth callback from Google and issues authorization code
  *     responses:
  *       302:
- *         description: Redirect to frontend with token
+ *         description: Redirect to frontend with authorization code
  *       401:
  *         description: Authentication failed
  */
@@ -82,18 +101,122 @@ router.get(
       return;
     }
 
-    const payload: JWTPayload = {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-    };
+    // Generate authorization code (valid for 5 minutes)
+    const code = randomUUID();
+    authCodes.set(code, {
+      user,
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    });
 
-    const token = generateToken(payload);
-
-    // Redirect to frontend with token in URL fragment (avoids leaking token via referrer)
-    res.redirect(`${frontendBaseUrl}/auth/callback#token=${encodeURIComponent(token)}`);
+    // Redirect to frontend with authorization code (NOT the token)
+    res.redirect(`${frontendBaseUrl}/auth/callback?code=${code}`);
   }
 );
+
+/**
+ * @swagger
+ * /auth/exchange:
+ *   post:
+ *     summary: Exchange authorization code for JWT token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - code
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 description: Authorization code from OAuth callback
+ *     responses:
+ *       200:
+ *         description: JWT token issued successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     token:
+ *                       type: string
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *       400:
+ *         description: Invalid or expired code
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/exchange', authRateLimiter, (req: Request, res: Response) => {
+  const { code } = req.body;
+
+  if (!code || typeof code !== 'string') {
+    res.status(400).json({
+      success: false,
+      error: 'BadRequest',
+      message: 'Authorization code gerekli',
+    });
+    return;
+  }
+
+  const authData = authCodes.get(code);
+
+  if (!authData) {
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Geçersiz veya süresi dolmuş authorization code',
+    });
+    return;
+  }
+
+  // Check if code is expired
+  if (authData.expiresAt < Date.now()) {
+    authCodes.delete(code);
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Authorization code süresi doldu',
+    });
+    return;
+  }
+
+  // Code is valid - delete it (one-time use)
+  authCodes.delete(code);
+
+  const payload: JWTPayload = {
+    userId: authData.user.id,
+    email: authData.user.email,
+    name: authData.user.name,
+  };
+
+  const token = generateToken(payload);
+
+  res.json({
+    success: true,
+    data: {
+      token,
+      user: {
+        id: authData.user.id,
+        email: authData.user.email,
+        name: authData.user.name,
+      },
+    },
+  });
+});
 
 /**
  * @swagger
