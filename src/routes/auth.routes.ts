@@ -1,18 +1,37 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import passport from '../config/passport.js';
 import { generateToken } from '../middleware/auth.middleware.js';
 import { env } from '../config/env.js';
 import type { User } from '@prisma/client';
 import type { JWTPayload } from '../types/index.js';
-import { authRateLimiter } from '../middleware/rate-limit.middleware.js';
+import { createRateLimiter, authRateLimiter } from '../middleware/rate-limit.middleware.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import type { AuthenticatedRequest } from '../types/index.js';
 
 const router = Router();
 const frontendBaseUrl = env.FRONTEND_URL.split(',')[0]!.trim();
 
-// Rate limit all auth endpoints (login brute force / callback abuse)
-router.use(authRateLimiter);
+// Custom rate limiter for Google OAuth that redirects instead of returning JSON
+const authGoogleRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 dakika
+  maxRequests: 10, // 10 istek
+  message: 'Çok fazla giriş denemesi. Lütfen 1 dakika bekleyin.',
+});
+
+// Google OAuth rate limiter'ı özelleştir - JSON yerine redirect yap
+const googleOAuthRateLimiterWithRedirect = (req: Request, res: Response, next: NextFunction) => {
+  const originalJson = res.json.bind(res);
+
+  // res.json'ı override et - rate limit hatası gelirse redirect yap
+  res.json = function (body: any): Response {
+    if (res.statusCode === 429 && body.error === 'TooManyRequests') {
+      return res.redirect(`${frontendBaseUrl}/auth/login?error=rate_limit`) as any;
+    }
+    return originalJson(body);
+  };
+
+  authGoogleRateLimiter(req, res, next);
+};
 
 /**
  * @swagger
@@ -24,9 +43,12 @@ router.use(authRateLimiter);
  *     responses:
  *       302:
  *         description: Redirect to Google OAuth
+ *       429:
+ *         description: Too many requests - redirects to login with error
  */
 router.get(
   '/google',
+  googleOAuthRateLimiterWithRedirect,
   passport.authenticate('google', {
     scope: ['profile', 'email'],
   })
@@ -47,6 +69,7 @@ router.get(
  */
 router.get(
   '/google/callback',
+  authRateLimiter,
   passport.authenticate('google', {
     session: false,
     failureRedirect: `${frontendBaseUrl}/auth/login?error=auth_failed`,
@@ -102,7 +125,7 @@ router.get(
  *       401:
  *         description: Unauthorized
  */
-router.get('/me', authMiddleware as any, (req: Request, res: Response) => {
+router.get('/me', authRateLimiter, authMiddleware as any, (req: Request, res: Response) => {
   const user = (req as AuthenticatedRequest).user;
 
   if (!user) {

@@ -2,6 +2,8 @@
 
 Physical gold investment tracker API with real-time pricing from altin.in.
 
+> **For AI-Assisted Development**: This project includes a [`CLAUDE.md`](./CLAUDE.md) file with detailed API specifications, business logic rules, and database schema for AI-assisted development with Claude Code.
+
 ## Features
 
 - **Google OAuth** authentication
