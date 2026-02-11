@@ -96,5 +96,6 @@ EXPOSE 4000
 # HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
 #   CMD sh -c 'wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1'
 
-# Start the application
+# Start the application with automatic migrations
+# Migration runs first, then starts the server
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
