@@ -7,8 +7,8 @@ import { saveDailySnapshot } from './scraper.service.js';
 export const initializeCronJobs = () => {
   // Run daily at 10:00 AM (Turkey timezone: UTC+3)
   // Cron expression: '0 10 * * *' (minute hour day month weekday)
-  // Adjust for UTC: 10 AM Turkey = 7 AM UTC
-  cron.schedule('0 7 * * *', async () => {
+  // timezone option handles UTC conversion automatically
+  cron.schedule('0 10 * * *', async () => {
     console.log('🕙 Running daily price snapshot job (10 AM Turkey time)...');
     try {
       await saveDailySnapshot();

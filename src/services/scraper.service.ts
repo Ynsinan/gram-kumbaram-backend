@@ -286,33 +286,47 @@ const savePriceToHistory = async (goldType: GoldType, buyPrice: number, sellPric
   }
 };
 
-// Get yesterday's closing price from database (last price of previous day)
-const getYesterdayClosingPrice = async (goldType: GoldType): Promise<number | null> => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Start of today (midnight)
+// Get today's midnight in Istanbul timezone (UTC+3) as a UTC Date
+const getTodayMidnightIstanbul = (): Date => {
+  const now = new Date();
+  // Format current date in Istanbul timezone (YYYY-MM-DD)
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  // Midnight Istanbul = 21:00 UTC previous day (Turkey is permanently UTC+3)
+  return new Date(todayStr + 'T00:00:00.000+03:00');
+};
 
-    // Get the last price from yesterday (before today's midnight)
-    const lastPriceYesterday = await prisma.goldPriceHistory.findFirst({
+// Get yesterday's snapshot price from database (previous day's 10 AM cron data)
+const getYesterdaySnapshotPrice = async (goldType: GoldType): Promise<number | null> => {
+  try {
+    const todayMidnight = getTodayMidnightIstanbul();
+
+    // Get the most recent snapshot BEFORE today's midnight (Istanbul time)
+    // This returns yesterday's 10 AM cron snapshot
+    const yesterdaySnapshot = await prisma.goldPriceHistory.findFirst({
       where: {
         goldType,
         fetchedAt: {
-          lt: today, // Before today's midnight
+          lt: todayMidnight,
         },
       },
       orderBy: {
-        fetchedAt: 'desc', // Get the latest price before today
+        fetchedAt: 'desc',
       },
     });
 
-    if (lastPriceYesterday) {
-      console.log(`📊 Yesterday's closing price for ${GOLD_TYPE_NAMES[goldType]}: ${lastPriceYesterday.sellPrice} TL`);
-      return lastPriceYesterday.sellPrice;
+    if (yesterdaySnapshot) {
+      console.log(`📊 Yesterday's snapshot price for ${GOLD_TYPE_NAMES[goldType]}: ${yesterdaySnapshot.sellPrice} TL`);
+      return yesterdaySnapshot.sellPrice;
     }
 
     return null;
   } catch (error) {
-    console.error(`Failed to get yesterday's closing price for ${GOLD_TYPE_NAMES[goldType]}:`, error);
+    console.error(`Failed to get yesterday's snapshot price for ${GOLD_TYPE_NAMES[goldType]}:`, error);
     return null;
   }
 };
@@ -332,8 +346,8 @@ export const getGoldPrices = async (forceRefresh = false): Promise<GoldPricesRes
     const price = priceCache.prices[type];
 
     if (price.buyPrice > 0 && price.sellPrice > 0) {
-      // Get yesterday's 10 AM price from database
-      const yesterdayPrice = await getYesterdayClosingPrice(type);
+      // Get yesterday's 10 AM snapshot price from database
+      const yesterdayPrice = await getYesterdaySnapshotPrice(type);
 
       // Calculate daily change percentage based on sell price
       if (yesterdayPrice !== null && yesterdayPrice > 0) {
