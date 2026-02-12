@@ -33,8 +33,6 @@ export const authMiddleware: RequestHandler = async (
       return;
     }
 
-    
-
     const token = authHeader.substring(7);
     const payload = verifyToken(token);
 
