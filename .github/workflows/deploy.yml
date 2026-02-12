@@ -31,3 +31,5 @@ jobs:
           tags: |
             ghcr.io/ynsinan/gram-kumbaram-backend:latest
             ghcr.io/ynsinan/gram-kumbaram-backend:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/Ynsinan/gram-kumbaram-backend
